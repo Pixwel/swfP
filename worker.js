@@ -101,3 +101,7 @@ process.on('SIGINT', () => {
   console.log('Caught SIGINT, polling will stop after current request...');
   worker.stop();
 });
+process.on('SIGTERM', () => {
+  console.log('Caught SIGTERM, polling will stop after current request...');
+  worker.stop();
+});
