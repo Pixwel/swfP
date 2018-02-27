@@ -4,6 +4,7 @@ var {Decider}  = require('aws-swf');
 var {hostname} = require('os');
 var bluebird   = require('bluebird');
 var yargs      = require('yargs');
+var logger      = require('winston');
 
 var {load} = require('./common');
 
@@ -66,7 +67,7 @@ const context = decisionTask => ({
   activity: (name, input, options = {}) =>
     new bluebird.Promise((resolve, reject) => {
       if (!decisionTask.eventList.is_activity_scheduled(name)) {
-        console.log(`Scheduling activity '${name}'`);
+        logger.info(`Scheduling activity '${name}'`);
 
         let schedule = Object.assign({
           name,
@@ -78,23 +79,23 @@ const context = decisionTask => ({
       }
 
       if (decisionTask.eventList.has_activity_completed(name)) {
-        console.log(`Activity '${name}' has completed`);
+        logger.info(`Activity '${name}' has completed`);
         return resolve(decisionTask.eventList.results(name));
       }
 
       if (decisionTask.eventList.has_activity_failed(name)) {
-        console.error(`Activity '${name}' has failed`);
+        logger.error(`Activity '${name}' has failed`);
         return reject(decisionTask.eventList.results(name));
       }
 
-      console.log(`Waiting for activity '${name}' to finish`);
+      logger.info(`Waiting for activity '${name}' to finish`);
       return decisionTask.response.wait();
     }),
 
   timer: (name, seconds) =>
     new bluebird.Promise(resolve => {
       if (!decisionTask.eventList.timer_scheduled(name)) {
-        console.log(`Scheduling timer '${name}'`);
+        logger.info(`Scheduling timer '${name}'`);
 
         return decisionTask.response.start_timer({
           delay: seconds
@@ -104,18 +105,18 @@ const context = decisionTask => ({
       }
 
       if (decisionTask.eventList.timer_fired(name)) {
-        console.log(`Timer '${name}' has fired`);
+        logger.info(`Timer '${name}' has fired`);
         return resolve();
       }
 
-      console.log(`Waiting for timer '${name}'`);
+      logger.info(`Waiting for timer '${name}'`);
       return decisionTask.response.wait();
     }),
 
   childWorkflow: (name, input, options) =>
     new bluebird.Promise((resolve, reject) => {
       if (!decisionTask.eventList.childworkflow_scheduled(name)) {
-        console.log(`Scheduling child workflow '${name}'`);
+        logger.info(`Scheduling child workflow '${name}'`);
 
         let schedule = Object.assign({
           name,
@@ -126,27 +127,27 @@ const context = decisionTask => ({
       }
 
       if (decisionTask.eventList.childworkflow_completed(name)) {
-        console.log(`Child workflow '${name}' has completed`);
+        logger.info(`Child workflow '${name}' has completed`);
         return resolve(decisionTask.eventList.childworkflow_results(name));
       }
 
       if (decisionTask.eventList.childworkflow_failed(name)) {
-        console.error(`Child workflow '${name}' has failed`);
+        logger.info(`Child workflow '${name}' has failed`);
         return reject(decisionTask.eventList.childworkflow_results(name));
       }
 
-      console.log(`Waiting for child workflow '${name}' to finish'`);
+      logger.info(`Waiting for child workflow '${name}' to finish'`);
       return decisionTask.response.wait();
     }),
 
   signal: name =>
     new bluebird.Promise(resolve => {
       if (decisionTask.eventList.signal_arrived(name)) {
-        console.log(`Signal '${name}' has been received`);
+        logger.info(`Signal '${name}' has been received`);
         return resolve(decisionTask.eventList.signal_input(name));
       }
 
-      console.log(`Waiting for signal '${name}'`);
+      logger.info(`Waiting for signal '${name}'`);
       return decisionTask.response.wait();
     })
 });
@@ -158,7 +159,7 @@ const handleDecisionState = ({response}) => ({decider}) => {
    */
   if (decider.isPending()) {
     decider.cancel();
-    return console.log('Workflow execution is still pending');
+    return logger.info('Workflow execution is still pending');
   }
 
   /**
@@ -170,7 +171,7 @@ const handleDecisionState = ({response}) => ({decider}) => {
       result: decider.value()
     });
 
-    return console.log('Workflow execution has succeeded');
+    return logger.info('Workflow execution has succeeded');
   }
 
   /**
@@ -190,7 +191,7 @@ const handleDecisionState = ({response}) => ({decider}) => {
       }
     });
 
-    return console.log('Workflow execution has failed');
+    return logger.error('Workflow execution has failed');
   }
 };
 
@@ -204,32 +205,32 @@ var decider = new Decider({
 });
 
 decider.on('decisionTask', decisionTask => {
-  console.log('Received decision task');
+  logger.info('Received decision task');
 
   execute(options.file, decisionTask)
-    .tap(() => console.log('Decision execution finished'))
+    .tap(() => logger.info('Decision execution finished'))
     .catch(err => {
-      console.error('Decision execution failed', err);
+      logger.error('Decision execution failed', err);
       throw err;
     })
     .then(handleDecisionState(decisionTask))
     .then(() => {
-      console.log('Sending decision response');
+      logger.info('Sending decision response');
       return bluebird.fromCallback(cb => decisionTask.response.send(cb));
     })
-    .then(() => console.log('All done!'));
+    .then(() => logger.info('All done!'));
 });
 
-decider.on('poll', () => console.log('Polling for decision tasks...'));
+decider.on('poll', () => logger.info('Polling for decision tasks...'));
 
-console.log(`Starting decider '${options.identity}' for task list '${options.taskList}' in domain '${options.domain}'`);
+logger.info(`Starting decider '${options.identity}' for task list '${options.taskList}' in domain '${options.domain}'`);
 
 decider.start();
 process.on('SIGINT', () => {
-  console.log('Caught SIGINT, polling will stop after current request...');
+  logger.info('Caught SIGINT, polling will stop after current request...');
   decider.stop();
 });
 process.on('SIGTERM', () => {
-  console.log('Caught SIGTERM, polling will stop after current request...');
+  logger.info('Caught SIGTERM, polling will stop after current request...');
   decider.stop();
 });

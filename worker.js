@@ -6,6 +6,7 @@ var resolve    = require('resolve');
 var bluebird   = require('bluebird');
 var yargs      = require('yargs');
 var throttle   = require('lodash.throttle');
+var logger     = require('winston');
 
 const HEARTBEAT_PERIOD = 10;
 
@@ -57,7 +58,7 @@ const execute = (file, activityTask) =>
 
       var input = parse(activityTask.config.input);
       var _context = context(activityTask);
-      console.log(`Executing activity '${name}'`, input);
+      logger.info(`Executing activity '${name}'`, input);
 
       return bluebird.resolve(activity(input, _context))
         .finally(() => _context.heartbeat.cancel());
@@ -67,7 +68,7 @@ const context = activityTask => ({
   Promise: bluebird,
 
   heartbeat: throttle(data => {
-    console.log('Sending heartbeat', data);
+    logger.info('Sending heartbeat', data);
     activityTask.recordHeartbeat(data);
   }, HEARTBEAT_PERIOD * 1000)
 });
@@ -80,28 +81,28 @@ var worker = new ActivityPoller({
 });
 
 worker.on('activityTask', activityTask => {
-  console.log('Received activity task');
+  logger.info('Received activity task');
 
   execute(options.file, activityTask)
-    .tap(result => console.log('Activity execution succeeded', result))
+    .tap(result => logger.info('Activity execution succeeded', result))
     .catch(err => {
-      console.error('Activity execution failed', err);
+      logger.error('Activity execution failed', err);
       activityTask.respondFailed(err.name, err.message);
       throw err;
     })
     .then(result => activityTask.respondCompleted(result));
 });
 
-worker.on('poll', () => console.log('Polling for activity tasks...'));
+worker.on('poll', () => logger.info('Polling for activity tasks...'));
 
-console.log(`Starting activity worker '${options.identity}' for task list '${options.taskList}' in domain '${options.domain}'`);
+logger.info(`Starting activity worker '${options.identity}' for task list '${options.taskList}' in domain '${options.domain}'`);
 
 worker.start();
 process.on('SIGINT', () => {
-  console.log('Caught SIGINT, polling will stop after current request...');
+  logger.info('Caught SIGINT, polling will stop after current request...');
   worker.stop();
 });
 process.on('SIGTERM', () => {
-  console.log('Caught SIGTERM, polling will stop after current request...');
+  logger.info('Caught SIGTERM, polling will stop after current request...');
   worker.stop();
 });
